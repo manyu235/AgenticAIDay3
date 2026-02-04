@@ -15,7 +15,7 @@ Criteria:
 5. Persona (0-10): Is a specific role assigned in the prompt?
 
 You must return your response in valid JSON format with this exact structure:
-{
+{{
   "clarity": number,
   "specificity": number,
   "context": number,
@@ -24,7 +24,7 @@ You must return your response in valid JSON format with this exact structure:
   "final_score": number,
   "explanation": "string",
   "suggestions": ["string1", "string2", "string3"]
-}
+}}
 
 Do not include any text outside the JSON object."""),
     ("human", "Evaluate this prompt:\n\n{prompt_text}")
@@ -32,21 +32,28 @@ Do not include any text outside the JSON object."""),
 
 def score_prompt(prompt_text):
     try:
-        formatted_prompt = prompt_template.format(prompt_text=prompt_text)
-        response = llm.invoke(formatted_prompt)
+        response = llm.invoke(prompt_template.format_messages(prompt_text=prompt_text))
         
         try:
-            result = json.loads(response.content)
-            if "final_score" not in result:
-                scores = [
-                    result.get("clarity", 0),
-                    result.get("specificity", 0),
-                    result.get("context", 0),
-                    result.get("output_format", 0),
-                    result.get("persona", 0)
-                ]
-                result["final_score"] = round(sum(scores) / len(scores), 1)
-            return result
+            # Extract JSON from response
+            content = response.content
+            start_idx = content.find('{')
+            end_idx = content.rfind('}') + 1
+            if start_idx != -1 and end_idx > start_idx:
+                json_str = content[start_idx:end_idx]
+                result = json.loads(json_str)
+                if "final_score" not in result:
+                    scores = [
+                        result.get("clarity", 0),
+                        result.get("specificity", 0),
+                        result.get("context", 0),
+                        result.get("output_format", 0),
+                        result.get("persona", 0)
+                    ]
+                    result["final_score"] = round(sum(scores) / len(scores), 1)
+                return result
+            else:
+                raise json.JSONDecodeError("No JSON found", content, 0)
         except json.JSONDecodeError:
             return {
                 "clarity": 0,
@@ -56,7 +63,7 @@ def score_prompt(prompt_text):
                 "persona": 0,
                 "final_score": 0,
                 "explanation": "Failed to parse response",
-                "suggestions": [response.content]
+                "suggestions": ["Error: Could not parse LLM response. Please try again."]
             }
     except Exception as e:
         return {
@@ -67,7 +74,7 @@ def score_prompt(prompt_text):
             "persona": 0,
             "final_score": 0,
             "explanation": f"Error: {str(e)}",
-            "suggestions": []
+            "suggestions": ["Please check your input and try again."]
         }
 
 def display_results(result):
